@@ -32,19 +32,22 @@ Matrix = np.array(Matrix)
 
 print("Matrix",Matrix.shape)
 n_data = Matrix.shape[0]
-n_anomaly = 60
+n_anomaly = 80
 seed = 1
 anomaly_data = Matrix[n_data-n_anomaly:,:]
 
-#anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
-anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
+anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
+#anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
 
+print(Matrix[n_data-n_anomaly:,:])
+
+print(anomaly_data)
 label = np.array([1]*n_data + [0]*n_anomaly) 
 train_and_anomaly = np.concatenate((Matrix,anomaly_data),axis = 0)
 
-random.seed(1)
+random.seed(0)
 random.shuffle(train_and_anomaly)
-random.seed(1)
+random.seed(0)
 random.shuffle(label)
 
 n_train = 500
@@ -57,8 +60,8 @@ test_label = label[n_train:]
 X_dim = dim
 y_dim = 2
 #---------------------------
-mb_size = 64
-z_dim = 10
+mb_size = 32
+z_dim = 5
 #X_dim = mnist.train.images.shape[1]
 #y_dim = mnist.train.labels.shape[1]
 h_dim = 128
@@ -133,9 +136,11 @@ def P(z):
 
 # =============================== TRAINING ====================================
 
-z_mu, z_logvar = Q(X)
-z_sample = sample_z(z_mu, z_logvar)
-_, logits = P(z_sample)
+latent, _= Q(X)
+#z_sample = sample_z(z_mu, z_logvar)
+#latent= tf.nn.l2_normalize(latent_raw, dim = 1)
+
+_, logits = P(latent)
 
 # Sampling from random z
 X_samples, _ = P(z)
@@ -146,12 +151,12 @@ X_samples, _ = P(z)
 recon_loss = tf.reduce_sum((logits-X)**2,1)
 
 # D_KL(Q(z|X) || P(z)); calculate in closed form as both dist. are Gaussian
-kl_loss = 0.5 * tf.reduce_sum(tf.exp(z_logvar) + z_mu**2 - 1. - z_logvar, 1)
+#kl_loss = 0.5 * tf.reduce_sum(tf.exp(z_logvar) + z_mu**2 - 1. - z_logvar, 1)
 # VAE loss
 mean_recon_loss = tf.reduce_mean(recon_loss)
 
 score = recon_loss
-vae_loss = tf.reduce_mean(recon_loss + kl_loss)
+vae_loss = tf.reduce_mean(recon_loss)
 
 solver = tf.train.AdamOptimizer().minimize(vae_loss)
 
@@ -201,8 +206,72 @@ for it in range(5000):
     
 #------------test----------------
 from sklearn.metrics import roc_auc_score
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+n_clusters = 2
+kmean = KMeans(n_clusters=n_clusters)
 
-score_,r_loss= sess.run([score ,mean_recon_loss], feed_dict={X: test_data})
+#--------
+
+score_,r_loss, latent_= sess.run([score ,mean_recon_loss,latent], feed_dict={X: test_data})
+#-----------draw------------
+
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plot
+X_embedded = TSNE(n_components=2).fit_transform(latent_)
+
+plt.figure('Scatter fig')
+ax = plt.gca()
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+colors = ['b','g','r','orange']
+
+for c in range(2):
+    x_list = []
+    y_list = []
+    for i in range(len(test_data)):
+        if train_label[i] == c:
+            point = latent_[i]
+            x_list.append(point[0])
+            y_list.append(point[1])
+    ax.scatter(x_list, y_list, c=colors[c], s=20, alpha=0.5)
+
+plt.show()
+
+#---------------------
+kmean.fit(latent_)
+labels = kmean.labels_
+
+print(labels)
+record = [0 for _ in range(n_clusters)]
+for l in labels:
+    record[l] += 1
+print(record)
+
+max1 = max(record)
+max1_idx = record.index(max1)
+record[max1_idx] = 0
+max2 = max(record)
+max2_idx = record.index(max2)
+
+print(max1_idx,max2_idx)
+
+centers = kmean.cluster_centers_
+print(centers)
+score_list = []
+centers = [centers[max1_idx],centers[max2_idx]]
+
+
+for j in range(len(latent_)):
+    a = latent_[j]
+    sim = []
+    for i, c in enumerate(centers):
+        sim.append( (np.sum(a*c))/((np.sqrt(np.sum(a**2)))*(np.sqrt(np.sum(a**2)))) )
+        #sim.append( np.sum((a-c)**2))
+    #print(sim)
+    score_list.append(np.max(sim))
+    #print(c)
+
 
 print(loss)
 print(test_label)

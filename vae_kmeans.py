@@ -58,7 +58,7 @@ X_dim = dim
 y_dim = 2
 #---------------------------
 mb_size = 64
-z_dim = 10
+z_dim = 5
 #X_dim = mnist.train.images.shape[1]
 #y_dim = mnist.train.labels.shape[1]
 h_dim = 128
@@ -201,10 +201,72 @@ for it in range(5000):
     
 #------------test----------------
 from sklearn.metrics import roc_auc_score
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+n_clusters = 4
+kmean = KMeans(n_clusters=n_clusters)
 
-score_,r_loss= sess.run([score ,mean_recon_loss], feed_dict={X: test_data})
+#--------
+
+score_,r_loss, latent_= sess.run([score ,mean_recon_loss,z_sample], feed_dict={X: test_data})
+#-----------
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plot
+X_embedded = TSNE(n_components=2).fit_transform(latent_)
+
+plt.figure('Scatter fig')
+ax = plt.gca()
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+colors = ['b','g','r','orange']
+
+for c in range(2):
+    x_list = []
+    y_list = []
+    for i in range(len(latent_)):
+        if test_label[i] == c:
+            point = latent_[i]
+            x_list.append(point[0])
+            y_list.append(point[1])
+    ax.scatter(x_list, y_list, c=colors[c], s=20, alpha=0.5)
+
+plt.show()
+
+#---------------------
+kmean.fit(latent_)
+labels = kmean.labels_
+
+print(labels)
+record = [0 for _ in range(n_clusters)]
+for l in labels:
+    record[l] += 1
+print(record)
+
+max1 = max(record)
+max1_idx = record.index(max1)
+record[max1_idx] = 0
+max2 = max(record)
+max2_idx = record.index(max2)
+
+print(max1_idx,max2_idx)
+
+centers = kmean.cluster_centers_
+print(centers)
+score_list = []
+centers = [centers[max1_idx],centers[max2_idx]]
+
+for j in range(len(latent_)):
+    a = latent_[j]
+    sim = []
+    for i, c in enumerate(centers):
+        #sim.append( (np.sum(a*c))/((np.sqrt(np.sum(a**2)))*(np.sqrt(np.sum(a**2)))) )
+        sim.append( np.sum((a-c)**2))
+    #print(sim)
+    score_list.append(np.max(sim))
+    #print(c)
+
 
 print(loss)
 print(test_label)
-auc_score = roc_auc_score(test_label, -score_)
+auc_score = roc_auc_score(test_label, score_list)
 print(auc_score)

@@ -36,9 +36,11 @@ n_anomaly = 60
 seed = 1
 anomaly_data = Matrix[n_data-n_anomaly:,:]
 
-#anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
-anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
+anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
 
+print(Matrix[n_data-n_anomaly:,:])
+
+print(anomaly_data)
 label = np.array([1]*n_data + [0]*n_anomaly) 
 train_and_anomaly = np.concatenate((Matrix,anomaly_data),axis = 0)
 
@@ -57,11 +59,11 @@ test_label = label[n_train:]
 X_dim = dim
 y_dim = 2
 #---------------------------
-mb_size = 64
-z_dim = 10
+mb_size = 32
+z_dim = 5
 #X_dim = mnist.train.images.shape[1]
 #y_dim = mnist.train.labels.shape[1]
-h_dim = 128
+h_dim = 64
 c = 0
 lr = 1e-3
 
@@ -133,9 +135,9 @@ def P(z):
 
 # =============================== TRAINING ====================================
 
-z_mu, z_logvar = Q(X)
-z_sample = sample_z(z_mu, z_logvar)
-_, logits = P(z_sample)
+latent, _= Q(X)
+#z_sample = sample_z(z_mu, z_logvar)
+_, logits = P(latent)
 
 # Sampling from random z
 X_samples, _ = P(z)
@@ -146,12 +148,12 @@ X_samples, _ = P(z)
 recon_loss = tf.reduce_sum((logits-X)**2,1)
 
 # D_KL(Q(z|X) || P(z)); calculate in closed form as both dist. are Gaussian
-kl_loss = 0.5 * tf.reduce_sum(tf.exp(z_logvar) + z_mu**2 - 1. - z_logvar, 1)
+#kl_loss = 0.5 * tf.reduce_sum(tf.exp(z_logvar) + z_mu**2 - 1. - z_logvar, 1)
 # VAE loss
 mean_recon_loss = tf.reduce_mean(recon_loss)
 
 score = recon_loss
-vae_loss = tf.reduce_mean(recon_loss + kl_loss)
+vae_loss = tf.reduce_mean(recon_loss)
 
 solver = tf.train.AdamOptimizer().minimize(vae_loss)
 

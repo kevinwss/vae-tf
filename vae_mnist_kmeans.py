@@ -10,34 +10,20 @@ os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
 
-dataset = "breast_cancer"
 
-dim = 10
-f = open(dataset)
-lines = f.readlines()
+dim = 28*28
 
-Matrix = []
-this_line = []
-
-for line in lines:
-    line = line.split(" ")
-    this_line = []
-    for i in range(1,dim+1):
-        data = (line[i].split(":"))[1]
-        this_line.append(float(data))
-    Matrix.append(this_line)
-
-Matrix = np.array(Matrix)
+Matrix = mnist.train.images
 
 
 print("Matrix",Matrix.shape)
 n_data = Matrix.shape[0]
-n_anomaly = 60
+n_anomaly = 550
 seed = 1
 anomaly_data = Matrix[n_data-n_anomaly:,:]
 
-#anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
-anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
+anomaly_data = np.concatenate((anomaly_data[:,dim//2:],anomaly_data[:,:dim//2]),axis = 1)
+#anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
 
 label = np.array([1]*n_data + [0]*n_anomaly) 
 train_and_anomaly = np.concatenate((Matrix,anomaly_data),axis = 0)
@@ -47,7 +33,7 @@ random.shuffle(train_and_anomaly)
 random.seed(1)
 random.shuffle(label)
 
-n_train = 500
+n_train = 50000
 train_data = train_and_anomaly[:n_train,:]
 train_label = label[:n_train]
 
@@ -58,7 +44,7 @@ X_dim = dim
 y_dim = 2
 #---------------------------
 mb_size = 64
-z_dim = 10
+z_dim = 100
 #X_dim = mnist.train.images.shape[1]
 #y_dim = mnist.train.labels.shape[1]
 h_dim = 128
@@ -201,8 +187,74 @@ for it in range(5000):
     
 #------------test----------------
 from sklearn.metrics import roc_auc_score
+from sklearn.cluster import KMeans
+import matplotlib.pyplot as plt
+n_clusters = 10
 
-score_,r_loss= sess.run([score ,mean_recon_loss], feed_dict={X: test_data})
+kmean = KMeans(n_clusters=n_clusters)
+
+#--------
+
+score_,r_loss, latent_= sess.run([score ,mean_recon_loss,z_sample], feed_dict={X: test_data})
+#-----------draw------------
+'''
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plot
+X_embedded = TSNE(n_components=2).fit_transform(latent_)
+
+plt.figure('Scatter fig')
+ax = plt.gca()
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+colors = ['b','g','r','orange']
+
+for c in range(2):
+    x_list = []
+    y_list = []
+    for i in range(len(test_data)):
+        if train_label[i] == c:
+            point = X_embedded[i]
+            x_list.append(point[0])
+            y_list.append(point[1])
+    ax.scatter(x_list, y_list, c=colors[c], s=20, alpha=0.5)
+
+plt.show()
+'''
+#---------------------
+kmean.fit(latent_)
+labels = kmean.labels_
+
+print(labels)
+record = [0 for _ in range(n_clusters)]
+for l in labels:
+    record[l] += 1
+#print(record)
+'''
+max1 = max(record)
+max1_idx = record.index(max1)
+record[max1_idx] = 0
+max2 = max(record)
+max2_idx = record.index(max2)
+'''
+#print(max1_idx,max2_idx)
+
+centers = kmean.cluster_centers_
+#print(centers)
+score_list = []
+
+#centers = [centers[max1_idx],centers[max2_idx]]
+
+
+for j in range(len(latent_)):
+    a = latent_[j]
+    sim = []
+    for i, c in enumerate(centers):
+        sim.append( (np.sum(a*c))/((np.sqrt(np.sum(a**2)))*(np.sqrt(np.sum(a**2)))) )
+        #sim.append( np.sum((a-c)**2))
+    #print(sim)
+    score_list.append(np.max(sim))
+    #print(c)
+
 
 print(loss)
 print(test_label)

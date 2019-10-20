@@ -36,15 +36,13 @@ n_anomaly = 60
 seed = 1
 anomaly_data = Matrix[n_data-n_anomaly:,:]
 
-#anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
-anomaly_data = 2*np.random.rand(n_anomaly,dim) - 1
+anomaly_data = np.concatenate((anomaly_data[:,5:],anomaly_data[:,:5]),axis = 1)
 
 label = np.array([1]*n_data + [0]*n_anomaly) 
 train_and_anomaly = np.concatenate((Matrix,anomaly_data),axis = 0)
 
 random.seed(1)
 random.shuffle(train_and_anomaly)
-random.seed(1)
 random.shuffle(label)
 
 n_train = 500
@@ -57,8 +55,8 @@ test_label = label[n_train:]
 X_dim = dim
 y_dim = 2
 #---------------------------
-mb_size = 64
-z_dim = 10
+mb_size = 32
+z_dim = 100
 #X_dim = mnist.train.images.shape[1]
 #y_dim = mnist.train.labels.shape[1]
 h_dim = 128
@@ -120,8 +118,8 @@ def sample_z(mu, log_var):
 P_W1 = tf.Variable(xavier_init([z_dim, h_dim]))
 P_b1 = tf.Variable(tf.zeros(shape=[h_dim]))
 
-P_W2 = tf.Variable(xavier_init([h_dim, X_dim]))
-P_b2 = tf.Variable(tf.zeros(shape=[X_dim]))
+P_W2 = tf.Variable(xavier_init([h_dim, X_dim//2]))
+P_b2 = tf.Variable(tf.zeros(shape=[X_dim//2]))
 
 
 def P(z):
@@ -130,12 +128,27 @@ def P(z):
     prob = tf.nn.sigmoid(logits)
     return prob, logits
 
+#-------------------
 
+P_W12 = tf.Variable(xavier_init([z_dim, h_dim]))
+P_b12 = tf.Variable(tf.zeros(shape=[h_dim]))
+
+P_W22 = tf.Variable(xavier_init([h_dim, X_dim//2]))
+P_b22 = tf.Variable(tf.zeros(shape=[X_dim//2]))
+
+
+def P2(z):
+    h = tf.nn.relu(tf.matmul(z, P_W12) + P_b12)
+    logits = tf.matmul(h, P_W22) + P_b22
+    prob = tf.nn.sigmoid(logits)
+    return prob, logits
 # =============================== TRAINING ====================================
 
 z_mu, z_logvar = Q(X)
 z_sample = sample_z(z_mu, z_logvar)
 _, logits = P(z_sample)
+
+_, logits2 = P2(z_sample)
 
 # Sampling from random z
 X_samples, _ = P(z)
@@ -143,15 +156,17 @@ X_samples, _ = P(z)
 # E[log P(X|z)]
 #recon_loss = tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits, labels=X), 1)
 
-recon_loss = tf.reduce_sum((logits-X)**2,1)
+recon_loss = tf.reduce_sum((logits-X[:,:dim//2])**2)
+
+recon_loss2 = tf.reduce_sum((logits2-X[:,dim//2:])**2)
 
 # D_KL(Q(z|X) || P(z)); calculate in closed form as both dist. are Gaussian
 kl_loss = 0.5 * tf.reduce_sum(tf.exp(z_logvar) + z_mu**2 - 1. - z_logvar, 1)
 # VAE loss
 mean_recon_loss = tf.reduce_mean(recon_loss)
 
-score = recon_loss
-vae_loss = tf.reduce_mean(recon_loss + kl_loss)
+score = 0.5*(recon_loss + recon_loss2)
+vae_loss = tf.reduce_mean(0.5*(recon_loss + recon_loss2) )
 
 solver = tf.train.AdamOptimizer().minimize(vae_loss)
 
@@ -198,7 +213,7 @@ for it in range(5000):
         i += 1
         plt.close(fig)
         '''
-    
+
 #------------test----------------
 from sklearn.metrics import roc_auc_score
 
